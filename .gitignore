@@ -128,6 +128,12 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Main file
+main.py
 
-# PPM files
+# Image files
 .ppm
+.png
+
+# Mac
+.DS_Store
