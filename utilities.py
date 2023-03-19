@@ -1,6 +1,6 @@
-import math
 import numpy as np
 from PIL import Image
+import math
 
 
 class Screen:
@@ -61,7 +61,7 @@ class Screen:
         :type d_color: tuple
         :return None
         """
-        self.screen[len(self.screen) - y - 1][x] = np.array(d_color)
+        self.screen[self.screen.shape[0] - y - 1, x] = np.array(d_color)
 
     def color_screen(self, d_color=(0, 0, 0)):
         """Colors the entire screen
@@ -73,7 +73,7 @@ class Screen:
         """
         for row in range(np.shape(self.screen)[0]):
             for col in range(np.shape(self.screen)[1]):
-                self.screen[row][col] = np.array(d_color)
+                self.screen[row, col] = np.array(d_color)
 
     def line(self, x1, y1, x2, y2, d_color=(0, 0, 0)):
         """Draws a line
@@ -142,7 +142,6 @@ class Screen:
                         file.write(f'{" ".join([str(i) for i in self.screen[row, col]])}\n')
         else:
             with open(file, 'wb') as file:
-                # print(cols, rows)
                 file.write(f'P6\n {cols} {rows} {255} + \n'.encode())
                 file.write(self.screen)  # This works numpy bytes array can be written
 
@@ -167,20 +166,17 @@ class Screen:
         """
         pixels = [tuple(pixel) for row in self.screen for pixel in row]
         self.img.putdata(pixels)
-        # pixels = [tuple(self.screen[row, col]) for col in range(np.shape(self.screen)[1]) for row in range(np.shape(self.screen)[0])]
-        # self.img.putdata(pixels)
-        # self.img = Image.fromarray(self.screen)
         self.img.show()
 
 
-class Matrix:
+class EdgeList:
     def __init__(self):
         self.matrix = []
         self.colors = []
 
     def __str__(self):
         out = ''
-        for col in range(len(self.matrix[0])):
+        for col in range(len(self.matrix[0])-1):
             for row in range(len(self.matrix)):
                 out += str(self.matrix[row][col])
                 out += ' '
@@ -194,85 +190,191 @@ class Matrix:
         return self.matrix[item]
 
     def add_point(self, x, y, z):
-        self.matrix.append([x, y, z, 1])
+        """Adds one endpoint to the EdgeList
 
-    def add_edge(self, x1, y1, z1, x2, y2, z2, color=(0, 0, 0)):
+        :param x: X cord
+        :type x: int
+        :param y: Y cord
+        :type: y: int
+        :param z: Z cord
+        :type z: int
+        :return: None
+        """
+        self.matrix.append(np.array([x, y, z, 1]))
+
+    def add_edge(self, x1, y1, z1, x2, y2, z2, d_color=(0, 0, 0)):
+        """ Adds the two endpoints of an edge to the EdgeList
+
+        :param x1: X cord 1st endpoint
+        :type x1: int
+        :param y1: Y cord 1st endpoint
+        :type y1: int
+        :param z1: Z cord 1st endpoint
+        :type z1: int
+        :param x2: X cord 2nd endpoint
+        :type x2: int
+        :param y2: Y cord 2nd endpoint
+        :type y2: int
+        :param z2: Z cord 2nd endpoint
+        :type z2: int
+        :param d_color: Line color
+            (default is (0,0,0))
+        :return: None
+        """
         self.add_point(x1, y1, z1)
         self.add_point(x2, y2, z2)
-        self.colors.append(color)
+        self.colors.append(d_color)
 
-    def eye(self, n):
-        self.matrix = [[0 if k != i else 1 for k in range(n)] for i in range(n)]
+    # Shapes
 
-    def mult(self, m):
-        self.matrix = [[sum(self.matrix[r][i] * m[i][c] for i in range(len(m))) for c in range(len(m[0]))] for r in
-                       range(len(self.matrix))]
+    def circle(self, x, y, z, r, steps=100, d_color=(0, 0, 0)):
+        x1 = x + r
+        y1 = y
+        for i in range(steps + 1):
+            x2 = math.cos(2 * math.pi * i / steps) * r + x
+            y2 = math.sin(2 * math.pi * i / steps) * r + y
+            self.add_edge(x1, y1, z, x2, y2, z, d_color=d_color)
+            x1, y1 = x2, y2
 
-    # Transformations
-    # def rot(self, theta, axis='z'):
-    #     axi = {'z':2, 'y':1, 'x':0}
-    #     axis = axi[axis]
-    #     core = [[math.cos(theta), math.sin(theta), 0], [-1*math.sin(theta), math.cos(theta), 0]]
-    #     core[0].insert(axis, 0)
-    #     core[1].insert(axis, 0)
-    #     core.insert(axis, [0 if i != axis else 1 for i in range(4)])
-    #     core.insert(3, [0,0,0,0])
-    #     self.mult(core)
+    def hermite(self, x1, y1, x2, y2, rx1, ry1, rx2, ry2, z, steps=100, d_color=(0, 0, 0)):
+        g = np.array([[x1, y1], [x2, y2, ], [rx1, ry1], [rx2, ry2]])
+        h_inv = np.array([[2, -2, 1, 1], [-3, 3, -2, -1], [0, 0, 1, 0], [1, 0, 0, 0]])
+        coef = h_inv @ g
+        x, y = x1, y1
+        for i in range(1, steps):
+            xt, yt = x, y
+            x, y = np.array([(i / steps) ** 3, (i / steps) ** 2, (i / steps), 1]) @ coef
+            self.add_edge(xt, yt, z, x, y, z, d_color=d_color)
 
-    def draw(self, screen):
+    def bezier(self, x1, y1, cx1, cy1, cx2, cy2, x2, y2, z, steps=100, d_color=(0, 0, 0)):
+        b = np.array([[-1, 3, -3, 1], [3, -6, 3, 0], [-3, 3, 0, 0], [1, 0, 0, 0]])
+        g = np.array([[x1, y1], [cx1, cy1], [cx2, cy2], [x2, y2]])
+        coef = b @ g
+        x, y = x1, y1
+        for i in range(0, steps):
+            xt, yt = x, y
+            x, y = np.array([(i / steps) ** 3, (i / steps) ** 2, (i / steps), 1]) @ coef
+            self.add_edge(xt, yt, z, x, y, z, d_color=d_color)
+
+
+    def draw(self, scrn):
+        """Draw edges to the given Screen
+
+        :param scrn: Screen to be drawn to
+        :return: None
+        """
         for point in range(0, len(self.matrix), 2):
-            screen.line(self.matrix[point][0], self.matrix[point][1], self.matrix[point + 1][0],
-                        self.matrix[point + 1][1], d_color=self.colors[point // 2])
+            scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point + 1][0]),
+                      round(self.matrix[point + 1][1]), d_color=self.colors[point // 2])
+
+    def transform(self, m):
+        """Multiplies EdgeList by given transformation matrix
+
+         :param m: Matrix to be multiplied by
+         :return: None
+         """
+        # This is left multiplication (I think)
+        # self.matrix = [[sum(self.matrix[r][i] * m.matrix[i, c] for i in range(np.shape(m.matrix)[0])) for c in range(np.shape(m.matrix)[1])] for r in
+        #                range(len(self.matrix))]
+        self.matrix = [m.matrix @ v for v in self.matrix]
+
+
+
+class Transformation:
+    def __init__(self):
+        self.matrix = np.eye(4)
+
+    def __str__(self):
+        return str(self.matrix)
+    # Transformations
+
+    def clear(self):
+        self.matrix = np.eye(4)
+
+    def rot(self, theta, axis='z'):
+        theta = theta / 180.0 * math.pi # If theta in degrees
+        axi = {'z': 2, 'y': 1, 'x': 0}
+        axis = axi[axis]
+        core = [[math.cos(theta), (-1)**(axis+1) * math.sin(theta), 0], [(-1)**axis*math.sin(theta), math.cos(theta), 0]]
+        core[0].insert(axis, 0)
+        core[1].insert(axis, 0)
+        core.insert(axis, [0 if i != axis else 1 for i in range(4)])
+        core.insert(3, [0, 0, 0, 1])
+
+        self.matrix = np.array(core) @ self.matrix
+
+    def translate(self, x, y, z):
+        m = np.eye(4)
+        m[0:3, 3] = np.array([x, y, z])
+        self.matrix = m @ self.matrix
+
+    def scale(self, x, y, z):
+        m = np.eye(4)
+        m[0, 0] = x
+        m[1, 1] = y
+        m[2, 2] = z
+        self.matrix = m @ self.matrix
+
+
+def parse(filename, screen):
+    with open(filename, 'r') as file:
+        t = Transformation()
+        edges = EdgeList()
+        current_cmd = None
+        for l in file:
+            l = l.strip()
+            if not current_cmd:
+                current_cmd = l
+                # 0 arg commands
+                if current_cmd[0] == '#':
+                    current_cmd = None
+                else:
+                    match current_cmd:
+                        case 'apply':
+                            edges.transform(t)
+                            # t = Transformation()
+                            current_cmd = None
+                        case 'ident':
+                            t = Transformation()
+                            current_cmd = None
+                        case 'draw':
+                            edges.draw(screen)
+                            current_cmd = None
+                        case 'display':
+                            screen.color_screen()
+                            edges.draw(screen)
+                            screen.display()
+                            current_cmd = None
+                        case 'quit':
+                            return None  # Or break
+            else:
+                # Commands with args
+                match current_cmd:
+                    case 'line':
+                        edges.add_edge(*[int(i) for i in l.split(' ')], d_color=(0, 255, 0))
+                    case 'save':
+                        screen.color_screen()
+                        edges.draw(screen)
+                        screen.save_extension(l)
+                    case 'scale':
+                        t.scale(*[float(i) for i in l.split(' ')])
+                    case 'translate':
+                        t.translate(*[float(i) for i in l.split(' ')])
+                    case 'rotate':
+                        t.rot(float(l.split(' ')[1]), axis=l.split(' ')[0])
+                    case 'hermite':
+                        edges.hermite(*[float(i) for i in l.split(' ')], 0, d_color=(0, 255,0 ))
+                    case 'bezier':
+                        edges.bezier(*[float(i) for i in l.split(' ')], 0, d_color=(0,255,0))
+                    case 'circle':
+                        edges.circle(*[float(i) for i in l.split(' ')], d_color=(0,255,0))
+
+                current_cmd = None
+
 
 
 if __name__ == '__main__':
-    m1 = Matrix()
-    m2 = Matrix()
+    s = Screen(500, 500)
+    parse('script', s)
 
-    print('\nTesting add_edge. Adding (1, 2, 3), (4, 5, 6) m2 =')
-    m2.add_edge(1, 2, 3, 4, 5, 6)
-    print(m2)
-
-    print('Testing ident. m1 = ')
-    m1.eye(4)
-    print(m1)
-
-    print('\nTesting matrix_mult. m1 * m2 =')
-    m2.mult(m1)
-    print(m2)
-
-    m1 = Matrix()
-    m1.add_edge(1, 2, 3, 4, 5, 6)
-    m1.add_edge(7, 8, 9, 10, 11, 12)
-    print("\nTesting Matrix mult. m1 =")
-    print(m1)
-    print("\nTesting Matrix mult. m1 * m2 =")
-    m1.mult(m2)
-    print(m1)
-
-    edges = Matrix()
-    edges.add_edge(50, 450, 0, 100, 450, 0)
-    edges.add_edge(50, 450, 0, 50, 400, 0)
-    edges.add_edge(100, 450, 0, 100, 400, 0)
-    edges.add_edge(100, 400, 0, 50, 400, 0)
-
-    edges.add_edge(200, 450, 0, 250, 450, 0)
-    edges.add_edge(200, 450, 0, 200, 400, 0)
-    edges.add_edge(250, 450, 0, 250, 400, 0)
-    edges.add_edge(250, 400, 0, 200, 400, 0)
-
-    edges.add_edge(150, 400, 0, 130, 360, 0)
-    edges.add_edge(150, 400, 0, 170, 360, 0)
-    edges.add_edge(130, 360, 0, 170, 360, 0)
-
-    edges.add_edge(100, 340, 0, 200, 340, 0)
-    edges.add_edge(100, 320, 0, 200, 320, 0)
-    edges.add_edge(100, 340, 0, 100, 320, 0)
-    edges.add_edge(200, 340, 0, 200, 320, 0)
-
-    screen = Screen(500, 500, d_color=(255, 255, 255))
-    color = [0, 0, 0]
-    edges.draw(screen)
-    screen.save_extension("bob.png")
-    screen.display()
 
