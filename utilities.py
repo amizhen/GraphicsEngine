@@ -1,6 +1,7 @@
+import math
+
 import numpy as np
 from PIL import Image
-import math
 
 
 class Screen:
@@ -61,7 +62,8 @@ class Screen:
         :type d_color: tuple
         :return None
         """
-        self.screen[self.screen.shape[0] - y - 1, x] = np.array(d_color)
+        if abs(x) < 500 and abs(self.screen.shape[0] - y - 1) < 500:
+            self.screen[self.screen.shape[0] - y - 1, x] = np.array(d_color)
 
     def color_screen(self, d_color=(0, 0, 0)):
         """Colors the entire screen
@@ -176,18 +178,12 @@ class EdgeList:
 
     def __str__(self):
         out = ''
-        for col in range(len(self.matrix[0])-1):
+        for col in range(len(self.matrix[0]) - 1):
             for row in range(len(self.matrix)):
                 out += str(self.matrix[row][col])
                 out += ' '
             out += '\n'
         return out
-
-    def __len__(self):
-        return len(self.matrix)
-
-    def __getitem__(self, item):
-        return self.matrix[item]
 
     def add_point(self, x, y, z):
         """Adds one endpoint to the EdgeList
@@ -225,6 +221,28 @@ class EdgeList:
         self.add_point(x2, y2, z2)
         self.colors.append(d_color)
 
+    def clear(self):
+        self.matrix = []
+        self.colors = []
+
+    def draw(self, scrn):
+        """Draw edges to the given Screen
+
+        :param scrn: Screen to be drawn to
+        :return: None
+        """
+        for point in range(0, len(self.matrix), 2):
+            scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point + 1][0]),
+                      round(self.matrix[point + 1][1]), d_color=self.colors[point // 2])
+
+    def transform(self, m):
+        """Multiplies EdgeList by given transformation matrix
+
+         :param m: Matrix to be multiplied by
+         :return: None
+         """
+        self.matrix = [m.matrix @ v for v in self.matrix]
+
     # Shapes
 
     def circle(self, x, y, z, r, steps=100, d_color=(0, 0, 0)):
@@ -257,69 +275,216 @@ class EdgeList:
             self.add_edge(xt, yt, z, x, y, z, d_color=d_color)
 
 
+class TriangleList:
+    def __init__(self):
+        self.matrix = []
+        self.colors = []
+
+    def __str__(self):
+        out = ''
+        for col in range(len(self.matrix[0]) - 1):
+            for row in range(len(self.matrix)):
+                out += str(self.matrix[row][col])
+                out += ' '
+            out += '\n'
+        return out
+
+    def add_point(self, x, y, z):
+        """Adds one endpoint to the EdgeList
+
+        :param x: X cord
+        :type x: int
+        :param y: Y cord
+        :type: y: int
+        :param z: Z cord
+        :type z: int
+        :return: None
+        """
+        self.matrix.append(np.array([x, y, z, 1]))
+
+    def add_triangle(self, x1, y1, z1, x2, y2, z2, x3, y3, z3, d_color=(0, 0, 0)):
+        """ Adds the two endpoints of an edge to the EdgeList
+
+        :param x1: X cord 1st endpoint
+        :type x1: int
+        :param y1: Y cord 1st endpoint
+        :type y1: int
+        :param z1: Z cord 1st endpoint
+        :type z1: int
+        :param x2: X cord 2nd endpoint
+        :type x2: int
+        :param y2: Y cord 2nd endpoint
+        :type y2: int
+        :param z2: Z cord 2nd endpoint
+        :type z2: int
+        :param d_color: Line color
+            (default is (0,0,0))
+        :return: None
+        """
+        self.add_point(x1, y1, z1)
+        self.add_point(x2, y2, z2)
+        self.add_point(x3, y3, z3)
+        self.colors.append(d_color)
+
+    def clear(self):
+        self.matrix = []
+        self.colors = []
+
     def draw(self, scrn):
-        """Draw edges to the given Screen
+        """Draw triangles to the given Screen
 
         :param scrn: Screen to be drawn to
         :return: None
         """
-        for point in range(0, len(self.matrix), 2):
-            scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point + 1][0]),
-                      round(self.matrix[point + 1][1]), d_color=self.colors[point // 2])
+        for point in range(0, len(self.matrix), 3):
+            pov = np.array([0, 0, 1])
+            normal = np.cross(np.array(self.matrix[point + 1][:3]) - np.array(self.matrix[point][:3]),
+                              self.matrix[point + 2][:3] - np.array(self.matrix[point][:3]))
+            if np.dot(pov, normal) > 0:
+                scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point + 1][0]),
+                          round(self.matrix[point + 1][1]), d_color=self.colors[point // 3])
+                scrn.line(round(self.matrix[point + 1][0]), round(self.matrix[point + 1][1]),
+                          round(self.matrix[point + 2][0]),
+                          round(self.matrix[point + 2][1]), d_color=self.colors[point // 3])
+                scrn.line(round(self.matrix[point + 2][0]), round(self.matrix[point + 2][1]),
+                          round(self.matrix[point][0]),
+                          round(self.matrix[point][1]), d_color=self.colors[point // 3])
 
     def transform(self, m):
-        """Multiplies EdgeList by given transformation matrix
+        """Multiplies TriangleList by given transformation matrix
 
          :param m: Matrix to be multiplied by
          :return: None
          """
-        # This is left multiplication (I think)
-        # self.matrix = [[sum(self.matrix[r][i] * m.matrix[i, c] for i in range(np.shape(m.matrix)[0])) for c in range(np.shape(m.matrix)[1])] for r in
-        #                range(len(self.matrix))]
         self.matrix = [m.matrix @ v for v in self.matrix]
 
+    # Shapes
+
+    def box(self, x, y, z, dx, dy, dz, d_color=(0, 0, 0)):
+        dy *= -1
+        dz *= -1
+
+        # Front
+        self.add_triangle(x, y, z, x + dx, y + dy, z, x + dx, y, z, d_color=d_color)
+        self.add_triangle(x, y, z, x, y + dy, z, x + dx, y + dy, z, d_color=d_color)
+
+        # Top
+        self.add_triangle(x, y, z, x + dx, y, z, x + dx, y, z + dz, d_color=d_color)
+        self.add_triangle(x, y, z, x + dx, y, z + dz, x, y, z + dz, d_color=d_color)
+
+        # Left
+        self.add_triangle(x + dx, y + dy, z, x + dx, y, z + dz, x + dx, y, z, d_color=d_color)
+        self.add_triangle(x + dx, y + dy, z, x + dx, y + dy, z + dz, x + dx, y, z + dz, d_color=d_color)
+
+        # Right
+        self.add_triangle(x, y + dy, z, x, y, z, x, y, z + dz, d_color=d_color)
+        self.add_triangle(x, y + dy, z, x, y, z + dz, x, y + dy, z + dz, d_color=d_color)
+
+        # Back
+        self.add_triangle(x, y, z + dz, x + dx, y, z + dz, x + dx, y + dy, z + dz, d_color=d_color)
+        self.add_triangle(x, y, z + dz, x + dx, y + dy, z + dz, x, y + dy, z + dz, d_color=d_color)
+
+        # Bottom
+        self.add_triangle(x, y + dy, z, x + dx, y + dy, z + dz, x + dx, y + dy, z, d_color=d_color)
+        self.add_triangle(x, y + dy, z, x, y + dy, z + dz, x + dx, y + dy, z + dz, d_color=d_color)
+
+    def sphere(self, x, y, z, r, step=15, d_color=(0, 0, 0)):
+        points = [[(r * math.cos(math.pi * phi / step) + x,
+                    r * math.sin(math.pi * phi / step) * math.cos(math.pi * theta / step) + y,
+                    r * math.sin(math.pi * phi / step) * math.sin(math.pi * theta / step) + z) for phi in
+                   range(step + 1)]
+                  for theta in range(step * 2)]
+
+        for i in range(step * 2):
+            for j in range(step):
+                self.add_triangle(*points[i][j], *points[(i + 1) % (step * 2)][j + 1], *points[(i + 1) % (step * 2)][j],
+                                  d_color=d_color)
+                self.add_triangle(*points[i][j], *points[i][j + 1], *points[(i + 1) % (step * 2)][j + 1],
+                                  d_color=d_color)
+
+    def torus(self, x, y, z, r, R, cstep=11, rstep=8, d_color=(0, 0, 0)):
+        points = [[(math.cos(math.pi * phi / cstep) * (r * math.cos(math.pi * theta / rstep) + R) + x,
+                    r * math.sin(math.pi * theta / rstep) + y,
+                    -1 * math.sin(math.pi * phi / cstep) * (r * math.cos(math.pi * theta / rstep) + R) + z) for phi in
+                   range(2 * cstep)] for theta in range(2 * rstep)]
+        for i in range(rstep * 2):
+            for j in range(cstep * 2):
+                self.add_triangle(*points[i][j], *points[i][(j + 1) % (cstep * 2)],
+                                  *points[(i + 1) % (rstep * 2)][(j + 1) % (cstep * 2)], d_color=d_color)
+                self.add_triangle(*points[i][j], *points[(i + 1) % (rstep * 2)][(j + 1) % (cstep * 2)],
+                                  *points[(i + 1) % (rstep * 2)][j], d_color=d_color)
 
 
 class Transformation:
-    def __init__(self):
-        self.matrix = np.eye(4)
+    def __init__(self, default=np.eye(4)):
+        self.matrix = default
 
     def __str__(self):
         return str(self.matrix)
+
+    def __copy__(self):
+        return Transformation(default=self.matrix.copy())
+
     # Transformations
 
     def clear(self):
         self.matrix = np.eye(4)
 
     def rot(self, theta, axis='z'):
-        theta = theta / 180.0 * math.pi # If theta in degrees
+        theta = theta / 180.0 * math.pi  # If theta in degrees
         axi = {'z': 2, 'y': 1, 'x': 0}
         axis = axi[axis]
-        core = [[math.cos(theta), (-1)**(axis+1) * math.sin(theta), 0], [(-1)**axis*math.sin(theta), math.cos(theta), 0]]
+        core = [[math.cos(theta), (-1) ** (axis + 1) * math.sin(theta), 0],
+                [(-1) ** axis * math.sin(theta), math.cos(theta), 0]]
         core[0].insert(axis, 0)
         core[1].insert(axis, 0)
         core.insert(axis, [0 if i != axis else 1 for i in range(4)])
         core.insert(3, [0, 0, 0, 1])
 
-        self.matrix = np.array(core) @ self.matrix
+        self.matrix = self.matrix @ np.array(core)
 
     def translate(self, x, y, z):
         m = np.eye(4)
         m[0:3, 3] = np.array([x, y, z])
-        self.matrix = m @ self.matrix
+        self.matrix = self.matrix @ m
 
     def scale(self, x, y, z):
         m = np.eye(4)
         m[0, 0] = x
         m[1, 1] = y
         m[2, 2] = z
-        self.matrix = m @ self.matrix
+        self.matrix = self.matrix @ m
+
+
+class Stack:
+    def __init__(self):
+        self.stack = [Transformation()]
+
+    def push(self):
+        self.stack.append(self.stack[-1].__copy__())
+
+    def pop(self):
+        self.stack.pop()
+
+    def rot(self, theta, axis='z'):
+        self.stack[-1].rot(theta, axis=axis)
+
+    def translate(self, x, y, z):
+        self.stack[-1].translate(x, y, z)
+
+    def scale(self, x, y, z):
+        self.stack[-1].scale(x, y, z)
+
+    def get_top(self):
+        return self.stack[-1]
 
 
 def parse(filename, screen):
     with open(filename, 'r') as file:
-        t = Transformation()
+        d_color = (0,255,0)
+        s = Stack()
         edges = EdgeList()
+        triangles = TriangleList()
         current_cmd = None
         for l in file:
             l = l.strip()
@@ -330,20 +495,14 @@ def parse(filename, screen):
                     current_cmd = None
                 else:
                     match current_cmd:
-                        case 'apply':
-                            edges.transform(t)
-                            # t = Transformation()
-                            current_cmd = None
-                        case 'ident':
-                            t = Transformation()
-                            current_cmd = None
-                        case 'draw':
-                            edges.draw(screen)
-                            current_cmd = None
                         case 'display':
-                            screen.color_screen()
-                            edges.draw(screen)
                             screen.display()
+                            current_cmd = None
+                        case 'push':
+                            s.push()
+                            current_cmd = None
+                        case 'pop':
+                            s.pop()
                             current_cmd = None
                         case 'quit':
                             return None  # Or break
@@ -355,26 +514,51 @@ def parse(filename, screen):
                     case 'save':
                         screen.color_screen()
                         edges.draw(screen)
+                        triangles.draw(screen)
                         screen.save_extension(l)
                     case 'scale':
-                        t.scale(*[float(i) for i in l.split(' ')])
-                    case 'translate':
-                        t.translate(*[float(i) for i in l.split(' ')])
+                        s.scale(*[float(i) for i in l.split(' ')])
+                    case 'move':
+                        s.translate(*[float(i) for i in l.split(' ')])
                     case 'rotate':
-                        t.rot(float(l.split(' ')[1]), axis=l.split(' ')[0])
+                        s.rot(float(l.split(' ')[1]), axis=l.split(' ')[0])
                     case 'hermite':
-                        edges.hermite(*[float(i) for i in l.split(' ')], 0, d_color=(0, 255,0 ))
+                        edges.hermite(*[float(i) for i in l.split(' ')], 0, d_color=d_color)
+                        edges.transform(s.get_top())
+                        edges.draw(screen)
+                        edges.clear()
                     case 'bezier':
-                        edges.bezier(*[float(i) for i in l.split(' ')], 0, d_color=(0,255,0))
+                        edges.bezier(*[float(i) for i in l.split(' ')], 0, d_color=d_color)
+                        edges.transform(s.get_top())
+                        edges.draw(screen)
+                        edges.clear()
                     case 'circle':
-                        edges.circle(*[float(i) for i in l.split(' ')], d_color=(0,255,0))
+                        edges.circle(*[float(i) for i in l.split(' ')], d_color=d_color)
+                        edges.transform(s.get_top())
+                        edges.draw(screen)
+                        edges.clear()
+                    case 'sphere':
+                        triangles.sphere(*[float(i) for i in l.split(' ')], d_color=d_color)
+                        triangles.transform(s.get_top())
+                        triangles.draw(screen)
+                        triangles.clear()
+                    case 'box':
+                        triangles.box(*[float(i) for i in l.split(' ')], d_color=d_color)
+                        triangles.transform(s.get_top())
+                        triangles.draw(screen)
+                        triangles.clear()
+                    case 'torus':
+                        triangles.torus(*[float(i) for i in l.split(' ')], d_color=d_color)
+                        triangles.transform(s.get_top())
+                        triangles.draw(screen)
+                        triangles.clear()
+                    case 'color':
+                        d_color = [int(i) for i in l.split(' ')]
+
 
                 current_cmd = None
-
 
 
 if __name__ == '__main__':
     s = Screen(500, 500)
     parse('script', s)
-
-
