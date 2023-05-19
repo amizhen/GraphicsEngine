@@ -1,0 +1,24 @@
+# Torus: 90, 119, 145, Sphere: 245, 185, 66
+color
+0 125 125
+torus
+250 250 0 7 105
+torus
+250 250 0 7 120
+color
+0 25 175
+sphere
+250 250 0 50
+ident
+move
+-250 -250 0
+rotate
+x 30
+rotate
+y 30
+rotate
+z 30
+move
+250 250 0
+apply
+display

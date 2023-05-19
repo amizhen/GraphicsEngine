@@ -2,7 +2,8 @@ import math
 
 import numpy as np
 from PIL import Image
-
+from random import randint
+from sys import exit
 
 class Screen:
     """
@@ -47,10 +48,11 @@ class Screen:
         """
         self.screen = np.array([[d_color for _ in range(cols)] for _ in range(rows)], dtype='B')
         self.img = Image.new('RGB', (self.screen.shape[1], self.screen.shape[0]))
+        self.z_buffer = [[float('-inf')]*cols for _ in range(rows)]
 
     # Drawing
 
-    def pixel(self, x, y, d_color=(0, 0, 0)):
+    def pixel(self, x, y, z, d_color=(0, 0, 0)):
         """Colors one pixel, with origin at the bottom left
 
         :param x: X Cord
@@ -63,7 +65,9 @@ class Screen:
         :return None
         """
         if abs(x) < 500 and abs(self.screen.shape[0] - y - 1) < 500:
-            self.screen[self.screen.shape[0] - y - 1, x] = np.array(d_color)
+            if z > self.z_buffer[self.screen.shape[0] - y - 1][x]:
+                self.screen[self.screen.shape[0] - y - 1, x] = np.array(d_color)
+                self.z_buffer[self.screen.shape[0] - y - 1][x] = z
 
     def color_screen(self, d_color=(0, 0, 0)):
         """Colors the entire screen
@@ -77,7 +81,11 @@ class Screen:
             for col in range(np.shape(self.screen)[1]):
                 self.screen[row, col] = np.array(d_color)
 
-    def line(self, x1, y1, x2, y2, d_color=(0, 0, 0)):
+    def reset(self):
+        self.color_screen()
+        self.z_buffer = [[float('-inf')] * np.shape(self.screen)[1] for _ in range(np.shape(self.screen)[0])]
+
+    def line(self, x1, y1, z1, x2, y2, z2, d_color=(0, 0, 0)):
         """Draws a line
 
         :param x1: X cord 1st endpoint
@@ -96,16 +104,22 @@ class Screen:
         if x1 > x2:  # Make x2 > x1
             y1, y2 = y2, y1
             x1, x2 = x2, x1
+            z1, z2 = z2, z1
 
         delta = 1
         if y2 < y1:  # If Y is decreasing
             delta = -1
         cost = 0
+
+
         if x2 - x1 >= abs(y2 - y1):  # |m| <= 1
-            x, y = x1, y1
+            x, y, z = x1, y1, z1
+
+            dz = (z2-z1) / (x2-x1+1)
             while x <= x2:  # Inclusive endpoints
-                self.pixel(x, y, d_color=d_color)
+                self.pixel(x, y, z, d_color=d_color)
                 x += 1
+                z += dz
                 cost += 2 * y2 - 2 * y1  # Adjust for x
                 if (cost + (- x2 + x1) * delta) * delta > 0:  # If under the line
                     y += delta
@@ -114,10 +128,12 @@ class Screen:
             if delta == -1:
                 y1, y2 = y2, y1
                 x1, x2 = x2, x1
-            x, y = x1, y1
+            x, y, z = x1, y1, z1
+            dz = (z2-z1) / (y2-y1+1)
             while y <= y2:  # Inclusive endpoints
-                self.pixel(x, y, d_color=d_color)
+                self.pixel(x, y, z, d_color=d_color)
                 y += 1
+                z += dz
                 cost += -2 * x2 + 2 * x1  # Adjust for y
                 if (cost + (y2 - y1) * delta) * delta < 0:  # If over the line
                     x += delta
@@ -232,8 +248,8 @@ class EdgeList:
         :return: None
         """
         for point in range(0, len(self.matrix), 2):
-            scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point + 1][0]),
-                      round(self.matrix[point + 1][1]), d_color=self.colors[point // 2])
+            scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point][2]), round(self.matrix[point + 1][0]),
+                      round(self.matrix[point + 1][1]), round(self.matrix[point + 1][2]), d_color=self.colors[point // 2])
 
     def transform(self, m):
         """Multiplies EdgeList by given transformation matrix
@@ -336,19 +352,45 @@ class TriangleList:
         :param scrn: Screen to be drawn to
         :return: None
         """
-        for point in range(0, len(self.matrix), 3):
+        for p in range(0, len(self.matrix), 3):
             pov = np.array([0, 0, 1])
-            normal = np.cross(np.array(self.matrix[point + 1][:3]) - np.array(self.matrix[point][:3]),
-                              self.matrix[point + 2][:3] - np.array(self.matrix[point][:3]))
+            normal = np.cross(np.array(self.matrix[p + 1][:3]) - np.array(self.matrix[p][:3]),
+                              self.matrix[p + 2][:3] - np.array(self.matrix[p][:3]))
             if np.dot(pov, normal) > 0:
-                scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point + 1][0]),
-                          round(self.matrix[point + 1][1]), d_color=self.colors[point // 3])
-                scrn.line(round(self.matrix[point + 1][0]), round(self.matrix[point + 1][1]),
-                          round(self.matrix[point + 2][0]),
-                          round(self.matrix[point + 2][1]), d_color=self.colors[point // 3])
-                scrn.line(round(self.matrix[point + 2][0]), round(self.matrix[point + 2][1]),
-                          round(self.matrix[point][0]),
-                          round(self.matrix[point][1]), d_color=self.colors[point // 3])
+                bot, mid, top = sorted(self.matrix[p:p+3], key=lambda x: x[1])
+
+                x0 = bot[0]
+                dx0 = (top[0] - bot[0])/(top[1] - bot[1]+1)
+                z0 = bot[2]
+                dz0 = (top[2]-bot[2])/(top[1]-bot[1]+1)
+
+                x1 = x0
+                dx1 = (mid[0] - bot[0]) / (mid[1] - bot[1]+1)
+                z1 = z0
+                dz1 = (mid[2] - bot[2]) / (mid[1] - bot[1]+1)
+
+
+                color = (randint(50,255), randint(50,255), randint(50,255))
+
+                for y in range(round(bot[1]), round(mid[1])):
+                    scrn.line(round(x0), y, z0, round(x1), y, z1, d_color=color)
+                    x0 += dx0
+                    z0 += dz0
+                    x1 += dx1
+                    z1 += dz1
+
+                x1 = mid[0]
+                dx1 = (top[0] - mid[0]) / (top[1] - mid[1]+1)
+                z1 = mid[2]
+                dz1 = (top[2] - mid[2]) / (top[1] - mid[1]+1)
+
+                for y in range(round(mid[1]), round(top[1]+1)):
+                    scrn.line(round(x0), y, z0, round(x1), y, z1, d_color=color)
+                    x0 += dx0
+                    z0 += dz0
+                    x1 += dx1
+                    z1 += dz1
+
 
     def transform(self, m):
         """Multiplies TriangleList by given transformation matrix
@@ -388,7 +430,7 @@ class TriangleList:
         self.add_triangle(x, y + dy, z, x + dx, y + dy, z + dz, x + dx, y + dy, z, d_color=d_color)
         self.add_triangle(x, y + dy, z, x, y + dy, z + dz, x + dx, y + dy, z + dz, d_color=d_color)
 
-    def sphere(self, x, y, z, r, step=15, d_color=(0, 0, 0)):
+    def sphere(self, x, y, z, r, step=10, d_color=(0, 0, 0)):
         points = [[(r * math.cos(math.pi * phi / step) + x,
                     r * math.sin(math.pi * phi / step) * math.cos(math.pi * theta / step) + y,
                     r * math.sin(math.pi * phi / step) * math.sin(math.pi * theta / step) + z) for phi in
@@ -503,6 +545,9 @@ def parse(filename, screen):
                             current_cmd = None
                         case 'pop':
                             s.pop()
+                            current_cmd = None
+                        case 'clear':
+                            screen.reset()
                             current_cmd = None
                         case 'quit':
                             return None  # Or break
