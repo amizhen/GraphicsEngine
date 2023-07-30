@@ -340,7 +340,34 @@ class TriangleList:
         self.add_point(x1, y1, z1)
         self.add_point(x2, y2, z2)
         self.add_point(x3, y3, z3)
-        self.colors.append(d_color)
+
+
+        AMBIENT = 0
+        DIFFUSE = 1
+        SPECULAR = 2
+        LOCATION = 0
+        COLOR = 1
+        SPECULAR_EXP = 4
+
+        normal = np.cross(np.array([x2-x1, y2-y1, z2-z1]), np.array([x3-x1, y3-y1, z3-z1]))
+
+        if np.linalg.norm(normal) != 0:
+            normal = normal / np.linalg.norm(normal)
+        else:
+            # print(x1, y1, z1, x2, y2, x2, x3, y3, z3)
+            normal*=0
+
+        pov = np.array([0,0,1])
+        ambient = np.array([50,50,50])
+        light_loc = np.array([0.5,0.75,1])
+        light_loc = np.linalg.norm(light_loc)
+        light_color = np.array([0,255,255])
+        areflect = np.array([0.1,0.1,0.1])
+        dreflect = np.array([0.5,0.5,0.5])
+        sreflect = np.array([0.5,0.5,0.5])
+
+        color = ambient * AMBIENT + light_color * (np.dot(normal, light_loc))
+        self.colors.append(color)
 
     def clear(self):
         self.matrix = []
@@ -369,11 +396,8 @@ class TriangleList:
                 z1 = z0
                 dz1 = (mid[2] - bot[2]) / (mid[1] - bot[1]+1)
 
-
-                color = (randint(50,255), randint(50,255), randint(50,255))
-
                 for y in range(round(bot[1]), round(mid[1])):
-                    scrn.line(round(x0), y, z0, round(x1), y, z1, d_color=color)
+                    scrn.line(round(x0), y, z0, round(x1), y, z1, d_color=self.colors[p//3])
                     x0 += dx0
                     z0 += dz0
                     x1 += dx1
@@ -385,12 +409,23 @@ class TriangleList:
                 dz1 = (top[2] - mid[2]) / (top[1] - mid[1]+1)
 
                 for y in range(round(mid[1]), round(top[1]+1)):
-                    scrn.line(round(x0), y, z0, round(x1), y, z1, d_color=color)
+                    scrn.line(round(x0), y, z0, round(x1), y, z1, d_color=self.colors[p//3])
                     x0 += dx0
                     z0 += dz0
                     x1 += dx1
                     z1 += dz1
 
+        # for point in range(0, len(self.matrix), 3):
+        #     pov = np.array([0, 0, 1])
+        #     normal = np.cross(np.array(self.matrix[point + 1][:3]) - np.array(self.matrix[point][:3]),
+        #                       self.matrix[point + 2][:3] - np.array(self.matrix[point][:3]))
+        #     if np.dot(pov, normal) > 0:
+        #         scrn.line(round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point][2]),
+        #                   round(self.matrix[point + 1][0]), round(self.matrix[point + 1][1]), round(self.matrix[point + 1][2]), d_color=self.colors[point // 3])
+        #         scrn.line(round(self.matrix[point + 1][0]), round(self.matrix[point + 1][1]), round(self.matrix[point + 1][2]),
+        #                   round(self.matrix[point + 2][0]), round(self.matrix[point + 2][1]), round(self.matrix[point + 2][2]), d_color=self.colors[point // 3])
+        #         scrn.line(round(self.matrix[point + 2][0]), round(self.matrix[point + 2][1]), round(self.matrix[point + 2][2]),
+        #                   round(self.matrix[point][0]), round(self.matrix[point][1]), round(self.matrix[point][2]), d_color=self.colors[point // 3])
 
     def transform(self, m):
         """Multiplies TriangleList by given transformation matrix
@@ -607,3 +642,6 @@ def parse(filename, screen):
 if __name__ == '__main__':
     s = Screen(500, 500)
     parse('script', s)
+    t = TriangleList()
+
+
